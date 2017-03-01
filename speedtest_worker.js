@@ -61,24 +61,26 @@ this.addEventListener('message', function(e){
 				if(/Firefox.(\d+\.\d+)/i.test(ua)){
 					//ff more precise with 1 upload stream
 					settings.xhr_ulMultistream=1;
-				}else if(/Edge.(\d+\.\d+)/i.test(ua)){
+				}
+				if(/Edge.(\d+\.\d+)/i.test(ua)){
 					//edge more precise with 3 download streams
 					settings.xhr_dlMultistream=3;
-				}else if((/Safari.(\d+)/i.test(ua))&&!(/Chrome.(\d+)/i.test(ua))){
+				}
+				if((/Safari.(\d+)/i.test(ua))&&!(/Chrome.(\d+)/i.test(ua))){
 					//safari is the usual shit
 					settings.xhr_dlMultistream=1;
 					settings.xhr_ulMultistream=1;
-				}else if(/Chrome.(\d+)/i.test(ua)){
+				}
+				if(/Chrome.(\d+)/i.test(ua)&&(!!self.fetch)){
 					//chrome can't handle large xhr very well, use fetch api if available
-					if(!!window.fetch){
-						settings.useFetchAPI=true;
-					}
+						useFetchAPI=true;
 				}
 			}
 			if(typeof s.count_ping != "undefined") settings.count_ping=s.count_ping; //number of pings for ping test
 			if(typeof s.xhr_dlMultistream != "undefined") settings.xhr_dlMultistream=s.xhr_dlMultistream; //number of download streams
 			if(typeof s.xhr_ulMultistream != "undefined") settings.xhr_ulMultistream=s.xhr_ulMultistream; //number of upload streams
-		}catch(e){}
+			console.log(settings);
+		}catch(e){console.log(e)}
 		//run the tests
 		getIp(function(){dlTest(function(){testStatus=2;pingTest(function(){testStatus=3;ulTest(function(){testStatus=4;});});})});
 	}
@@ -122,11 +124,13 @@ function dlTest(done){
 	xhr=[]; 
 	//function to create a download stream
 	var testStream=function(i){
+		console.log(useFetchAPI);
 		if(useFetchAPI){
 			xhr[i]=fetch(settings.url_dl+"?r="+Math.random()).then(function(response) {
 			  var reader = response.body.getReader();
 			  var consume=function() {
 				return reader.read().then(function(result) {
+					console.log(i+" got "+result);
 					if(result.done) testStream(i); else{
 						totLoaded+=result.value.length;
 						if(xhr[i].canelRequested) reader.cancel();
