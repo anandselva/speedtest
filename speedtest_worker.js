@@ -22,11 +22,13 @@ var settings={ //test settings. can be overridden by sending specific values wit
 	url_getIp:"getIP.php", //path to getIP.php relative to this js file, or a similar thing that outputs the client's ip
 	xhr_dlMultistream:10, //number of download streams to use (can be different if enable_quirks is active) (>2 recommended)
 	xhr_ulMultistream:3, //number of upload streams to use (can be different if enable_quirks is active) (>1 recommended)
-	enable_quirks:true //enable quirks for specific browsers. currently it overrides multistream settings to optimize for specific browsers, unless they are already being overridden with the start command
+	enable_quirks:true, //enable quirks for specific browsers. currently it overrides multistream settings to optimize for specific browsers, unless they are already being overridden with the start command
 	};
 
 var xhr=null, //array of currently active xhr requests
 	interval=null; //timer used in tests
+	
+var useFetchAPI=false; //when set to true (automatically) the download test will use the fetch api instead of xhr
 	
 /*
 	listener for commands from main thread to this worker.
@@ -59,15 +61,18 @@ this.addEventListener('message', function(e){
 				if(/Firefox.(\d+\.\d+)/i.test(ua)){
 					//ff more precise with 1 upload stream
 					settings.xhr_ulMultistream=1;
-				}
-				if(/Edge.(\d+\.\d+)/i.test(ua)){
+				}else if(/Edge.(\d+\.\d+)/i.test(ua)){
 					//edge more precise with 3 download streams
 					settings.xhr_dlMultistream=3;
-				}
-				if((/Safari.(\d+)/i.test(ua))&&!(/Chrome.(\d+)/i.test(ua))){
+				}else if((/Safari.(\d+)/i.test(ua))&&!(/Chrome.(\d+)/i.test(ua))){
 					//safari is the usual shit
 					settings.xhr_dlMultistream=1;
 					settings.xhr_ulMultistream=1;
+				}else if(/Chrome.(\d+)/i.test(ua)){
+					//chrome can't handle large xhr very well, use fetch api if available
+					if(!!window.fetch){
+						settings.useFetchAPI=true;
+					}
 				}
 			}
 			if(typeof s.count_ping != "undefined") settings.count_ping=s.count_ping; //number of pings for ping test
@@ -87,6 +92,7 @@ this.addEventListener('message', function(e){
 function clearRequests(){
 	if(xhr){
 		for(var i=0;i<xhr.length;i++){
+			if(useFetchAPI)try{xhr[i].cancelRequested=true;}catch(e){}
 			try{xhr[i].onprogress=null; xhr[i].onload=null; xhr[i].onerror=null;}catch(e){}
 			try{xhr[i].upload.onprogress=null; xhr[i].upload.onload=null; xhr[i].upload.onerror=null;}catch(e){}
 			try{xhr[i].abort();}catch(e){}
@@ -116,27 +122,43 @@ function dlTest(done){
 	xhr=[]; 
 	//function to create a download stream
 	var testStream=function(i){
-		var prevLoaded=0; //number of bytes loaded last time onprogress was called
-		xhr[i]=new XMLHttpRequest();
-		xhr[i].onprogress=function(event){
-			//progress event, add number of new loaded bytes to totLoaded
-			var loadDiff=event.loaded<=0?0:(event.loaded-prevLoaded);
-			if(isNaN(loadDiff)||!isFinite(loadDiff)||loadDiff<0) return; //just in case
-			totLoaded+=loadDiff;
-			prevLoaded=event.loaded;
-		}.bind(this);
-		xhr[i].onload=function(){
-			//the large file has been loaded entirely, start again (cannot happen if using garbage.php)
-			testStream(i);
-		}.bind(this);
-		xhr[i].onerror=function(){
-			//error, abort stream and ignore
-			try{xhr[i].abort();}catch(e){}
-			xhr[i]=null;
-		}.bind(this);
-		//send xhr
-		xhr[i].open("GET",settings.url_dl+"?r="+Math.random(),true); //random string to prevent caching
-		xhr[i].send();
+		if(useFetchAPI){
+			xhr[i]=fetch(settings.url_dl+"?r="+Math.random()).then(function(response) {
+			  var reader = response.body.getReader();
+			  var consume=function() {
+				return reader.read().then(function(result) {
+					if(result.done) testStream(i); else{
+						totLoaded+=result.value.length;
+						if(xhr[i].canelRequested) reader.cancel();
+					}
+				  return consume();
+				}.bind(this));
+			  }.bind(this);
+			  return consume();
+			}.bind(this));
+		}else{
+			var prevLoaded=0; //number of bytes loaded last time onprogress was called
+			xhr[i]=new XMLHttpRequest();
+			xhr[i].onprogress=function(event){
+				//progress event, add number of new loaded bytes to totLoaded
+				var loadDiff=event.loaded<=0?0:(event.loaded-prevLoaded);
+				if(isNaN(loadDiff)||!isFinite(loadDiff)||loadDiff<0) return; //just in case
+				totLoaded+=loadDiff;
+				prevLoaded=event.loaded;
+			}.bind(this);
+			xhr[i].onload=function(){
+				//the large file has been loaded entirely, start again
+				testStream(i);
+			}.bind(this);
+			xhr[i].onerror=function(){
+				//error, abort stream and ignore
+				try{xhr[i].abort();}catch(e){}
+				xhr[i]=null;
+			}.bind(this);
+			//send xhr
+			xhr[i].open("GET",settings.url_dl+"?r="+Math.random(),true); //random string to prevent caching
+			xhr[i].send();
+		}
 	}.bind(this);
 	//open streams
 	for(var i=0;i<settings.xhr_dlMultistream;i++){
