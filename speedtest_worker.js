@@ -23,6 +23,7 @@ var settings={ //test settings. can be overridden by sending specific values wit
 	xhr_dlMultistream:10, //number of download streams to use (can be different if enable_quirks is active) (>2 recommended)
 	xhr_ulMultistream:3, //number of upload streams to use (can be different if enable_quirks is active) (>1 recommended)
 	enable_quirks:true, //enable quirks for specific browsers. currently it overrides multistream settings to optimize for specific browsers, unless they are already being overridden with the start command
+	allow_fetchAPI:false //enables Fetch API. currently disabled because it leaks memory like no tomorrow
 	};
 
 var xhr=null, //array of currently active xhr requests
@@ -79,7 +80,8 @@ this.addEventListener('message', function(e){
 			if(typeof s.count_ping != "undefined") settings.count_ping=s.count_ping; //number of pings for ping test
 			if(typeof s.xhr_dlMultistream != "undefined") settings.xhr_dlMultistream=s.xhr_dlMultistream; //number of download streams
 			if(typeof s.xhr_ulMultistream != "undefined") settings.xhr_ulMultistream=s.xhr_ulMultistream; //number of upload streams
-			console.log(settings);
+			if(typeof s.allow_fetchAPI != "undefined") settings.allow_fetchAPI=s.allow_fetchAPI; //allows fetch api to be used if supported
+			if(settings.allow_fetchAPI&&(!!self.fetch)) useFetchAPI=true;
 		}catch(e){console.log(e)}
 		//run the tests
 		getIp(function(){dlTest(function(){testStatus=2;pingTest(function(){testStatus=3;ulTest(function(){testStatus=4;});});})});
@@ -124,13 +126,11 @@ function dlTest(done){
 	xhr=[]; 
 	//function to create a download stream
 	var testStream=function(i){
-		console.log(useFetchAPI);
 		if(useFetchAPI){
 			xhr[i]=fetch(settings.url_dl+"?r="+Math.random()).then(function(response) {
 			  var reader = response.body.getReader();
 			  var consume=function() {
-				return reader.read().then(function(result) {
-					console.log(i+" got "+result);
+				return reader.read().then(function(result){
 					if(result.done) testStream(i); else{
 						totLoaded+=result.value.length;
 						if(xhr[i].canelRequested) reader.cancel();
