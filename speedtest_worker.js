@@ -24,13 +24,21 @@ var settings={ //test settings. can be overridden by sending specific values wit
 	xhr_ulMultistream:3, //number of upload streams to use (can be different if enable_quirks is active) (>1 recommended)
 	garbagePhp_chunkSize:20, //size of chunks sent by garbage.php (can be different if enable_quirks is active)
 	enable_quirks:true, //enable quirks for specific browsers. currently it overrides settings to optimize for specific browsers, unless they are already being overridden with the start command
-	allow_fetchAPI:false //enables Fetch API. currently disabled because it leaks memory like no tomorrow
+	allow_fetchAPI:false, //enables Fetch API. currently disabled because it leaks memory like no tomorrow
+	force_fetchAPI:false //when Fetch API is enabled, it will force usage on every browser that supports it
 	};
 
 var xhr=null, //array of currently active xhr requests
 	interval=null; //timer used in tests
 	
-var useFetchAPI=false; //when set to true (automatically) the download test will use the fetch api instead of xhr
+/*
+	when set to true (automatically) the download test will use the fetch api instead of xhr.
+	fetch api is used if
+		-allow_fetchAPI is true AND
+		-we're on chrome that supports fetch api and enable_quirks is true , OR
+		-we're on any browser that supports fetch api and force_fetchAPI is true
+*/
+var useFetchAPI=false;
 	
 /*
 	listener for commands from main thread to this worker.
@@ -57,6 +65,7 @@ this.addEventListener('message', function(e){
 			if(typeof s.time_dl != "undefined") settings.time_dl=s.time_dl; //duration of download test
 			if(typeof s.time_ul != "undefined") settings.time_ul=s.time_ul; //duration of upload test
 			if(typeof s.enable_quirks != "undefined") settings.enable_quirks=s.enable_quirks; //enable quirks or not
+			if(typeof s.allow_fetchAPI != "undefined") settings.allow_fetchAPI=s.allow_fetchAPI; //allows fetch api to be used if supported
 			//quirks for specific browsers. more may be added in future releases
 			if(settings.enable_quirks){
 				var ua=navigator.userAgent;
@@ -84,11 +93,12 @@ this.addEventListener('message', function(e){
 			if(typeof s.xhr_dlMultistream != "undefined") settings.xhr_dlMultistream=s.xhr_dlMultistream; //number of download streams
 			if(typeof s.xhr_ulMultistream != "undefined") settings.xhr_ulMultistream=s.xhr_ulMultistream; //number of upload streams
 			if(typeof s.garbagePhp_chunkSize != "undefined") settings.garbagePhp_chunkSize=s.garbagePhp_chunkSize; //size of garbage.php chunks
-			if(typeof s.allow_fetchAPI != "undefined") settings.allow_fetchAPI=s.allow_fetchAPI; //allows fetch api to be used if supported
-			if(settings.allow_fetchAPI&&(!!self.fetch)) useFetchAPI=true;
+			if(typeof s.force_fetchAPI != "undefined") settings.force_fetchAPI=s.force_fetchAPI; //use fetch api on all browsers that support it if enabled
+			if(settings.allow_fetchAPI&&settings.force_fetchAPI&&(!!self.fetch)) useFetchAPI=true;
 		}catch(e){console.log(e)}
 		//run the tests
 		console.log(settings);
+		console.log("Fetch API: "+useFetchAPI);
 		getIp(function(){dlTest(function(){testStatus=2;pingTest(function(){testStatus=3;ulTest(function(){testStatus=4;});});})});
 	}
 	if(params[0]=="abort"){ //abort command
