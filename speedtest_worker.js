@@ -79,9 +79,9 @@ this.addEventListener('message', function(e){
 					settings.xhr_dlMultistream=3;
 				}
 				if((/Safari.(\d+)/i.test(ua))&&!(/Chrome.(\d+)/i.test(ua))){
-					//safari is the usual shit
-					settings.xhr_dlMultistream=1;
-					settings.xhr_ulMultistream=1;
+					//safari more precise with 10 upload streams and 5mb chunks for download test
+					settings.xhr_ulMultistream=10;
+					settings.garbagePhp_chunkSize=5;
 				}
 				if(/Chrome.(\d+)/i.test(ua)&&(!!self.fetch)){
 					//chrome can't handle large xhr very well, use fetch api if available and allowed
