@@ -17,7 +17,7 @@ var testStatus=0, //0=not started, 1=download test, 2=ping+jitter test, 3=upload
 var settings={ 
 	time_ul:15, //duration of upload test in seconds (>10 recommended)
 	time_dl:15, //duration of download test in seconds (>5 recommended)
-	count_ping:35, //number of pings to perform in upload test (>20 recommended)
+	count_ping:35, //number of pings to perform in ping test (>20 recommended)
 	url_dl:"garbage.php", //path to a large file or garbage.php, used for download test. must be relative to this js file
 	url_ul:"empty.dat", //path to an empty file, used for upload test. must be relative to this js file
 	url_ping:"empty.dat", //path to an empty file, used for ping test. must be relative to this js file
@@ -86,8 +86,6 @@ this.addEventListener('message', function(e){
 				if(/Chrome.(\d+)/i.test(ua)&&(!!self.fetch)){
 					//chrome can't handle large xhr very well, use fetch api if available and allowed
 					if(settings.allow_fetchAPI) useFetchAPI=true;
-					//also, smaller chunks seem to be better here
-					settings.garbagePhp_chunkSize=10;
 				}
 			}
 			if(typeof s.count_ping != "undefined") settings.count_ping=s.count_ping; //number of pings for ping test
@@ -142,8 +140,9 @@ function dlTest(done){
 		failed=false; //set to true if a stream fails
 	xhr=[]; 
 	//function to create a download stream
-	var testStream=function(i){
+	var testStream=function(i,delay){
 		setTimeout(function(){ //delay creation of a stream slightly so that the new stream is completely detached from the one that created it
+			if(testStatus!=1) return; //delayed stream ended up starting after the end of the download test
 			if(useFetchAPI){
 				xhr[i]=fetch(settings.url_dl+"?r="+Math.random()+"&ckSize="+settings.garbagePhp_chunkSize).then(function(response) {
 				  var reader = response.body.getReader();
@@ -160,8 +159,10 @@ function dlTest(done){
 				}.bind(this));
 			}else{
 				var prevLoaded=0; //number of bytes loaded last time onprogress was called
-				xhr[i]=new XMLHttpRequest();
+				var x=new XMLHttpRequest();
+				xhr[i]=x;
 				xhr[i].onprogress=function(event){
+					if(testStatus!=1){try{x.abort();}catch(e){}} //just in case this XHR is still running after the download test
 					//progress event, add number of new loaded bytes to totLoaded
 					var loadDiff=event.loaded<=0?0:(event.loaded-prevLoaded);
 					if(isNaN(loadDiff)||!isFinite(loadDiff)||loadDiff<0) return; //just in case
@@ -170,7 +171,7 @@ function dlTest(done){
 				}.bind(this);
 				xhr[i].onload=function(){
 					//the large file has been loaded entirely, start again
-					testStream(i);
+					testStream(i,0);
 				}.bind(this);
 				xhr[i].onerror=function(){
 					//error, abort
@@ -183,11 +184,11 @@ function dlTest(done){
 				xhr[i].open("GET",settings.url_dl+"?r="+Math.random()+"&ckSize="+settings.garbagePhp_chunkSize,true); //random string to prevent caching
 				xhr[i].send();
 			}
-		}.bind(this),1);
+		}.bind(this),1+delay);
 	}.bind(this);
 	//open streams
 	for(var i=0;i<settings.xhr_dlMultistream;i++){
-		testStream(i);
+		testStream(i,100*i);
 	}
 	//every 200ms, update dlStatus
 	interval=setInterval(function(){
@@ -218,11 +219,14 @@ function ulTest(done){
 		failed=false; //set to true if a stream fails
 	xhr=[];
 	//function to create an upload stream
-	var testStream=function(i){
+	var testStream=function(i,delay){
 		setTimeout(function(){ //delay creation of a stream slightly so that the new stream is completely detached from the one that created it
+			if(testStatus!=3) return; //delayed stream ended up starting after the end of the upload test
 			var prevLoaded=0; //number of bytes transmitted last time onprogress was called
-			xhr[i]=new XMLHttpRequest();
+			var x=new XMLHttpRequest();
+			xhr[i]=x;
 			xhr[i].upload.onprogress=function(event){
+				if(testStatus!=3){try{x.abort();}catch(e){}} //just in case this XHR is still running after the upload test
 				//progress event, add number of new loaded bytes to totLoaded
 				var loadDiff=event.loaded<=0?0:(event.loaded-prevLoaded);
 				if(isNaN(loadDiff)||!isFinite(loadDiff)||loadDiff<0) return; //just in case
@@ -231,7 +235,7 @@ function ulTest(done){
 			}.bind(this);
 			xhr[i].upload.onload=function(){
 				//this stream sent all 20mb of garbage data, start again
-				testStream(i);
+				testStream(i,0);
 			}.bind(this);
 			xhr[i].upload.onerror=function(){
 				//error, abort
@@ -247,7 +251,7 @@ function ulTest(done){
 	}.bind(this);
 	//open streams
 	for(var i=0;i<settings.xhr_ulMultistream;i++){
-		testStream(i);
+		testStream(i,100*i);
 	}
 	//every 200ms, update ulStatus
 	interval=setInterval(function(){
