@@ -5,6 +5,7 @@
 	GNU LGPLv3 License
 */
 
+//data reported to main thread
 var testStatus=0, //0=not started, 1=download test, 2=ping+jitter test, 3=upload test, 4=finished, 5=abort/error
 	dlStatus="", //download speed in megabit/s with 2 decimal digits
 	ulStatus="", //upload speed in megabit/s with 2 decimal digits
@@ -12,7 +13,8 @@ var testStatus=0, //0=not started, 1=download test, 2=ping+jitter test, 3=upload
 	jitterStatus="", //jitter in milliseconds with 2 decimal digits
 	clientIp=""; //client's IP address as reported by getIP.php
 
-var settings={ //test settings. can be overridden by sending specific values with the start command
+//test settings. can be overridden by sending specific values with the start command
+var settings={ 
 	time_ul:15, //duration of upload test in seconds (>10 recommended)
 	time_dl:15, //duration of download test in seconds (>5 recommended)
 	count_ping:35, //number of pings to perform in upload test (>20 recommended)
@@ -26,7 +28,7 @@ var settings={ //test settings. can be overridden by sending specific values wit
 	enable_quirks:true, //enable quirks for specific browsers. currently it overrides settings to optimize for specific browsers, unless they are already being overridden with the start command
 	allow_fetchAPI:false, //enables Fetch API. currently disabled because it leaks memory like no tomorrow
 	force_fetchAPI:false //when Fetch API is enabled, it will force usage on every browser that supports it
-	};
+};
 
 var xhr=null, //array of currently active xhr requests
 	interval=null; //timer used in tests
@@ -35,8 +37,7 @@ var xhr=null, //array of currently active xhr requests
 	when set to true (automatically) the download test will use the fetch api instead of xhr.
 	fetch api is used if
 		-allow_fetchAPI is true AND
-		-we're on chrome that supports fetch api and enable_quirks is true , OR
-		-we're on any browser that supports fetch api and force_fetchAPI is true
+		-(we're on chrome that supports fetch api AND enable_quirks is true) OR (we're on any browser that supports fetch api AND force_fetchAPI is true)
 */
 var useFetchAPI=false;
 	
@@ -137,7 +138,8 @@ var dlCalled=false; //used to prevent multiple accidental calls to dlTest
 function dlTest(done){
 	if(dlCalled) return; else dlCalled=true; //dlTest already called?
 	var totLoaded=0.0, //total number of loaded bytes
-		startT=new Date().getTime(); //timestamp when test was started
+		startT=new Date().getTime(), //timestamp when test was started
+		failed=false; //set to true if a stream fails
 	xhr=[]; 
 	//function to create a download stream
 	var testStream=function(i){
@@ -171,7 +173,8 @@ function dlTest(done){
 					testStream(i);
 				}.bind(this);
 				xhr[i].onerror=function(){
-					//error, abort stream and ignore
+					//error, abort
+					failed=true;
 					try{xhr[i].abort();}catch(e){}
 					xhr[i]=null;
 				}.bind(this);
@@ -191,7 +194,8 @@ function dlTest(done){
 		if(t<200) return;
 		var speed=totLoaded/(t/1000.0);
 		dlStatus=((speed*8)/925000.0).toFixed(2); //925000 instead of 1048576 to account for overhead
-		if((t/1000.0)>settings.time_dl){ //test is over, stop streams and timer
+		if((t/1000.0)>settings.time_dl||failed){ //test is over, stop streams and timer
+			if(failed||isNaN(dlStatus)) dlStatus="Fail";
 			clearRequests();
 			clearInterval(interval);
 			done();
@@ -209,7 +213,8 @@ var ulCalled=false; //used to prevent multiple accidental calls to ulTest
 function ulTest(done){
 	if(ulCalled) return; else ulCalled=true; //ulTest already called?
 	var totLoaded=0.0, //total number of transmitted bytes
-		startT=new Date().getTime(); //timestamp when test was started
+		startT=new Date().getTime(), //timestamp when test was started
+		failed=false; //set to true if a stream fails
 	xhr=[];
 	//function to create an upload stream
 	var testStream=function(i){
@@ -228,7 +233,8 @@ function ulTest(done){
 				testStream(i);
 			}.bind(this);
 			xhr[i].upload.onerror=function(){
-				//error, abort stream and ignore
+				//error, abort
+				failed=true;
 				try{xhr[i].abort();}catch(e){}
 				xhr[i]=null;
 			}.bind(this);
@@ -248,7 +254,8 @@ function ulTest(done){
 		if(t<200) return;
 		var speed=totLoaded/(t/1000.0);
 		ulStatus=((speed*8)/925000.0).toFixed(2); //925000 instead of 1048576 to account for overhead
-		if((t/1000.0)>settings.time_ul){ //test is over, stop streams and timer
+		if((t/1000.0)>settings.time_ul||failed){ //test is over, stop streams and timer
+			if(failed||isNaN(ulStatus)) ulStatus="Fail";
 			clearRequests();
 			clearInterval(interval);
 			done();
@@ -288,8 +295,10 @@ function pingTest(done){
             if(i<settings.count_ping) doPing(); else done(); //more pings to do?
         }.bind(this);
         xhr[0].onerror=function(){
-			//a ping failed, cancel ping test
+			//a ping failed, cancel test
             pingStatus="Fail";
+			jitterStatus="Fail";
+			clearRequests();
             done();
         }.bind(this);
 		//sent xhr
