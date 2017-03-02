@@ -86,6 +86,8 @@ this.addEventListener('message', function(e){
 				if(/Chrome.(\d+)/i.test(ua)&&(!!self.fetch)){
 					//chrome can't handle large xhr very well, use fetch api if available and allowed
 					if(settings.allow_fetchAPI) useFetchAPI=true;
+					//chrome more precise with 5 streams
+					settings.xhr_dlMultistream=5;
 				}
 			}
 			if(typeof s.count_ping != "undefined") settings.count_ping=s.count_ping; //number of pings for ping test
