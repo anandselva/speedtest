@@ -65,7 +65,7 @@
             var w=null;
             var ggdl,ggul,ggping;
             function runTest(){
-                w=new Worker("speedtest_worker.js");
+                w=new Worker("speedtest_worker.min.js");
                 var interval=setInterval(function(){w.postMessage("status");}.bind(this),100);
                 document.getElementById("abortBtn").style.display="";
                 document.getElementById("startBtn").style.display="none";

@@ -179,6 +179,7 @@ function dlTest(done){
 					xhr[i]=null;
 				}.bind(this);
 				//send xhr
+				xhr[i].responseType='blob';
 				xhr[i].open("GET",settings.url_dl+"?r="+Math.random()+"&ckSize="+settings.garbagePhp_chunkSize,true); //random string to prevent caching
 				xhr[i].send();
 			}
